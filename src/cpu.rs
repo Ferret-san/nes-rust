@@ -9,6 +9,9 @@ use memory::Memory;
 use ppu::Ppu;
 use register::Register;
 use rom::{Rom, HEADER_SIZE};
+use std::fmt;
+use std::fs::OpenOptions;
+use std::io::Write;
 
 fn to_joypad_button(button: button::Button) -> joypad::Button {
     match button {
@@ -53,6 +56,9 @@ pub struct Cpu {
     joypad1: Joypad,
     joypad2: Joypad,
     rom: Rom,
+
+    // operations buffer
+    op_buffer: Vec<String>,
 }
 
 // interrupts
@@ -133,6 +139,71 @@ enum InstructionTypes {
     TYA,
 }
 
+impl fmt::Display for InstructionTypes {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let variant_str = match self {
+            InstructionTypes::INV => "INV",
+            InstructionTypes::ADC => "ADC",
+            InstructionTypes::AND => "AND",
+            InstructionTypes::ASL => "ASL",
+            InstructionTypes::BCC => "BCC",
+            InstructionTypes::BCS => "BCS",
+            InstructionTypes::BEQ => "BEQ",
+            InstructionTypes::BIT => "BIT",
+            InstructionTypes::BMI => "BMI",
+            InstructionTypes::BNE => "BNE",
+            InstructionTypes::BPL => "BPL",
+            InstructionTypes::BRK => "BRK",
+            InstructionTypes::BVC => "BVC",
+            InstructionTypes::BVS => "BVS",
+            InstructionTypes::CLC => "CLC",
+            InstructionTypes::CLD => "CLD",
+            InstructionTypes::CLI => "CLI",
+            InstructionTypes::CLV => "CLV",
+            InstructionTypes::CMP => "CMP",
+            InstructionTypes::CPX => "CPX",
+            InstructionTypes::CPY => "CPY",
+            InstructionTypes::DEC => "DEC",
+            InstructionTypes::DEX => "DEX",
+            InstructionTypes::DEY => "DEY",
+            InstructionTypes::EOR => "EOR",
+            InstructionTypes::INC => "INC",
+            InstructionTypes::INX => "INX",
+            InstructionTypes::INY => "INY",
+            InstructionTypes::JMP => "JMP",
+            InstructionTypes::JSR => "JSR",
+            InstructionTypes::LDA => "LDA",
+            InstructionTypes::LDX => "LDX",
+            InstructionTypes::LDY => "LDY",
+            InstructionTypes::LSR => "LSR",
+            InstructionTypes::NOP => "NOP",
+            InstructionTypes::ORA => "ORA",
+            InstructionTypes::PHA => "PHA",
+            InstructionTypes::PHP => "PHP",
+            InstructionTypes::PLA => "PLA",
+            InstructionTypes::PLP => "PLP",
+            InstructionTypes::ROL => "ROL",
+            InstructionTypes::ROR => "ROR",
+            InstructionTypes::RTI => "RTI",
+            InstructionTypes::RTS => "RTS",
+            InstructionTypes::SBC => "SBC",
+            InstructionTypes::SEC => "SEC",
+            InstructionTypes::SED => "SED",
+            InstructionTypes::SEI => "SEI",
+            InstructionTypes::STA => "STA",
+            InstructionTypes::STX => "STX",
+            InstructionTypes::STY => "STY",
+            InstructionTypes::TAX => "TAX",
+            InstructionTypes::TAY => "TAY",
+            InstructionTypes::TSX => "TSX",
+            InstructionTypes::TXA => "TXA",
+            InstructionTypes::TXS => "TXS",
+            InstructionTypes::TYA => "TYA",
+        };
+        write!(f, "{}", variant_str)
+    }
+}
+
 fn instruction_name(instruction_type: InstructionTypes) -> &'static str {
     match instruction_type {
         InstructionTypes::INV => "inv",
@@ -211,10 +282,42 @@ enum AddressingModes {
     Relative,
 }
 
+impl fmt::Display for AddressingModes {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let variant_str = match self {
+            AddressingModes::Immediate => "Immediate",
+            AddressingModes::Absolute => "Absolute",
+            AddressingModes::IndexedAbsoluteX => "Indexed Absolute X",
+            AddressingModes::IndexedAbsoluteY => "Indexed Absolute Y",
+            AddressingModes::ZeroPage => "Zero Page",
+            AddressingModes::IndexedZeroPageX => "Indexed Zero Page X",
+            AddressingModes::IndexedZeroPageY => "Indexed Zero Page Y",
+            AddressingModes::Implied => "Implied",
+            AddressingModes::Accumulator => "Accumulator",
+            AddressingModes::Indirect => "Indirect",
+            AddressingModes::IndexedIndirectX => "Indexed Indirect X",
+            AddressingModes::IndexedIndirectY => "Indexed Indirect Y",
+            AddressingModes::Relative => "Relative",
+        };
+        write!(f, "{}", variant_str)
+    }
+}
+
 pub struct Operation {
     instruction_type: InstructionTypes,
     cycle: u8,
     addressing_mode: AddressingModes,
+}
+
+// Implementing Display for MyStruct
+impl fmt::Display for Operation {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Operation: instruction_type = {}, cycle = {}, addressing_mode = {}",
+            self.instruction_type, self.cycle, self.addressing_mode
+        )
+    }
 }
 
 // @TODO: Replace with static array?
@@ -1106,6 +1209,7 @@ impl Cpu {
             joypad1: Joypad::new(),
             joypad2: Joypad::new(),
             rom: Rom::new(vec![0; HEADER_SIZE]), // dummy
+            op_buffer: vec![],
         }
     }
 
@@ -1284,6 +1388,10 @@ impl Cpu {
                 self.stall_cycles += 1;
             }
         }
+    }
+
+    pub fn return_op_buffer(&mut self) -> &mut Vec<String> {
+        &mut self.op_buffer
     }
 
     // @TODO: Clean up if needed
@@ -1717,6 +1825,17 @@ impl Cpu {
                 self.update_z(result);
             }
         }
+
+        self.op_buffer.push(op.to_string());
+        // let mut file = OpenOptions::new()
+        //     .write(true)
+        //     .append(true)
+        //     .create(true)
+        //     .open("operations_log.txt")
+        //     .expect("Unable to open file");
+
+        // // Write the operation to the file
+        // writeln!(file, "Operation: {}", op).expect("Unable to write to file");
     }
 
     pub fn operate_return(&mut self, op: &Operation) -> &mut Cpu {

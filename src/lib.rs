@@ -152,4 +152,8 @@ impl Nes {
     pub fn operate(&mut self, op: &cpu::Operation) -> &mut Cpu {
         self.cpu.operate_return(op)
     }
+
+    pub fn get_cpu(&mut self) -> &mut Cpu {
+        &mut self.cpu
+    }
 }
